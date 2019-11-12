@@ -3,7 +3,7 @@ const bot = new Discord.Client();
 const Enmap = require("enmap");
 const guildScrims = new Enmap({name: "scrims"});
 const guildSettings = new Enmap({name: "settings"});
-const token = 'NjE2NTA0MzM1MzcwODEzNDcw.XWdirw.-xudOMfXRqHNaSIhnwfuvBcssdo'; // bot token
+const token = 'not for the public!'; // bot token
 const defaultSettings = {
     prefix: "!",
     timezone: "EST",
@@ -18,19 +18,25 @@ function createServer(guildid, object){
 }
 
 bot.on("guildCreate", (guild) => {
+    console.log(guild.roles.find(role => role.name === "Scheduler"));
     createServer(guild.id, []);
-    guild.createRole({
-        name: 'Scheduler',
-        color: 'BLUE',
-    })
+    if(guild.roles.find(role => role.name === "Scheduler") == null){ // sets the scheduler role to the custom created one by ID
+        guild.createRole({
+            name: 'Scheduler',
+            color: 'BLUE',
+        })
         .then(role => console.log(`Created new role with name ${role.name} and color ${role.color}`))
         .catch(console.error);
-    guild.createRole({
-        name: 'Player',
-        color: 'RED'
-    }).then(role => console.log(`Created new role with name ${role.name} and color ${role.color}`))
-    .catch(console.error);
-    })
+    }
+    console.log(guild.roles.find(role => role.name === "Player"));
+    if(guild.roles.find(role => role.name === "Player") == null){
+        guild.createRole({
+            name: 'Player',
+            color: 'RED'
+        }).then(role => console.log(`Created new role with name ${role.name} and color ${role.color}`))
+        .catch(console.error);
+    }
+});
 
 bot.on("guildDelete", (guild) => {
     guildScrims.delete(guild.id);
@@ -94,12 +100,14 @@ bot.on('message', message => {
     let args = message.content.substring(PREFIX.length).split(" ");
     switch(args[0]){
         case 'initialize':
-                if(guildSettings.get(message.guild.id, "schedulerRole") != null){
-                    message.reply("It seems you have already initialized the bot's settings. Check them with !settings.");
+                try{
+                    guildSettings.set(message.guild.id, message.guild.roles.find(role => role.name === "Scheduler").id, "schedulerRole"); // sets the scheduler role to the custom created one by ID
+                    guildSettings.set(message.guild.id, message.guild.roles.find(role => role.name === "Player").id, "playerRole");
+                }
+                catch{
+                    message.reply("Scheduler and Player role must exist for you to initialize the settings. Create these roles then try again.");
                     break;
                 }
-                guildSettings.set(message.guild.id, message.guild.roles.find(role => role.name === "Scheduler").id, "schedulerRole"); // sets the scheduler role to the custom created one by ID
-                guildSettings.set(message.guild.id, message.guild.roles.find(role => role.name === "Player").id, "playerRole");
                 guildSettings.set(message.guild.id, message.channel.id, "botChannel");
                 message.reply("Your settings have been initialized. Check them with !settings.");
                 break;
@@ -189,7 +197,7 @@ bot.on('message', message => {
                 for (i=1;i<args.length-3;i++){
                     team += args[i];
                     if (i != args.length-4){ // add a space between them except the last one
-                        team += " ";
+                          team += " ";
                     }
                 }
                 console.log(team);
@@ -239,7 +247,7 @@ bot.on('message', message => {
                 break;
         case 'nextScrim':
                 scrimSchedule = organizeSchedule(message.guild.id);
-                message.channel.send("The next scrim is... \n" + scrimSchedule[0].toString());
+                message.channel.send("The next scrim is... \n" + scrimSchedule[0].toString((guildSettings.get(message.guild.id,"timezone"))));
                 break;
         case 'clearSchedule':
                 if (!isScheduler(message)){ // checks permission breaks if not allowed.
@@ -552,34 +560,35 @@ function makeReadableDate(dateObject){ // takes in date object -> returns readab
     return (readableDate);
 }
 function formatDate(dateObject, timezone){ // adjust the hours based on the timezone
-    hoursInEST = dateObject.getHours(); // getHours retrives it in either EST or EDT, this could become a problem once it swaps.
+    hoursInEDT = dateObject.getHours(); // getHours retrives it in either EST or EDT, this could become a problem once it swaps.
+                                                    // THIS IS BECAUSE THE SERVER IS LOCATED IN NEW YORK
     switch (timezone){
         case 'EST':
-            formattedHours = hoursInEST - 1;
+            formattedHours = hoursInEDT - 1;
             break;
         case 'EDT':
-            formattedHours = hoursInEST + 0;
+            formattedHours = hoursInEDT + 0;
             break;
         case 'CST':
-            formattedHours = hoursInEST - 2;
+            formattedHours = hoursInEDT - 2;
             break;
         case 'CDT':
-            formattedHours = hoursInEST - 1;
+            formattedHours = hoursInEDT - 1;
             break;
         case 'MST':
-            formattedHours = hoursInEST - 3;
+            formattedHours = hoursInEDT - 3;
             break;
         case 'MDT':
-            formattedHours = hoursInEST - 2;
+            formattedHours = hoursInEDT - 2;
             break;
         case 'PST':
-            formattedHours = hoursInEST - 4;
+            formattedHours = hoursInEDT + 4;
             break;
         case 'PDT':
-            formattedHours = hoursInEST - 3;
+            formattedHours = hoursInEDT + 3;
             break;
         default:
-            formattedHours = hoursInEST;
+            formattedHours = hoursInEDT;
             break;
     }
     dateObject.setHours(formattedHours);
@@ -628,6 +637,11 @@ class Scrim {
     toString(){ // Converts the date into a custom format and prints it out.
         return "**" + this.readableDate + "**" + "\n" + "      " + this.team + ": " + this.OPGG;
     }
+    toString(timezone){ // Converts the date into a custom format and prints it out.
+        return "**" + makeReadableDate(formatDate(this.date, timezone)) + "**" + "\n" + "      " + this.team + ": " + this.OPGG;
+    }
+
+    
 }
 
 // Create a Date Object for a scrim 
@@ -668,37 +682,36 @@ function CreateDate(Month, Day, Year, Time, timezone){
             hour = "00";
         }
     }
-    timeOffset = "+00:00" // default to UTC
     switch (timezone){
         case 'EST':
-            timeOffset = "-05:00"; // -1
+            hour = hour-1;
             break;
         case 'EDT':
-            timeOffset = "-04:00"; // - 0
+            hour = hour-0;
             break;
         case 'CST':
-            timeOffset = "-06:00"; // -2
+            hour = hour - 2;
             break;
         case 'CDT':
-            timeOffset = "-05:00"; // -1
+            hour = hour - 1;
             break;
         case 'MST':
-            timeOffset = "-07:00"; // -3
+            hour = hour - 3;
             break;
         case 'MDT':
-            timeOffset = "-06:00"; // -2
+            hour = hour - 2;
             break;
         case 'PST':
-            timeOffset = "-08:00";// -4
+            hour = hour - 4;
             break;
         case 'PDT':
-            timeOffset = "-07:00"; // -3
+            hour = hour - 3;
             break;
     }
     // Creates a date object and returns it
-    dateStr = Month + " " + Day + ", " + Year + " " + hour +":"+minute+":00 GMT" + timeOffset; // i think this makes all dates be in EST?
-    var date = new Date(dateStr)
-    console.log("A date was created of: " + dateStr);
+    dateStr = (Month + " " + Day + ", " + Year + " " + hour +":"+minute); // i think this makes all dates be in EST?
+    var date = formatDate(new Date(dateStr), timezone);
+    console.log("A date was created of: " + date.toString());
     return date;
 }
 
